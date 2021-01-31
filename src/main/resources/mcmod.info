@@ -1,0 +1,16 @@
+[
+{
+  "modid": "pixelstats",
+  "name": "PixelStats",
+  "description": "Hypixel Bedwars Statistics",
+  "version": "${version}",
+  "mcversion": "${mcversion}",
+  "url": "",
+  "updateUrl": "",
+  "authorList": ["iStudLion"],
+  "credits": "",
+  "logoFile": "",
+  "screenshots": [],
+  "dependencies": []
+}
+]
