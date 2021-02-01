@@ -11,20 +11,21 @@ import java.util.regex.Pattern;
 
 import com.rmjtromp.pixelstats.core.EventsManager;
 import com.rmjtromp.pixelstats.core.Hypixel;
-import com.rmjtromp.pixelstats.core.Hypixel.GAMESTATUS;
+import com.rmjtromp.pixelstats.core.Hypixel.GameActivity;
 import com.rmjtromp.pixelstats.core.events.MessageReceiveEvent;
 import com.rmjtromp.pixelstats.core.events.MouseInputEvent;
-import com.rmjtromp.pixelstats.core.games.IGame;
+import com.rmjtromp.pixelstats.core.games.AbstractGame;
 import com.rmjtromp.pixelstats.core.games.bedwars.gui.BedwarsOverlay;
 import com.rmjtromp.pixelstats.core.utils.AntiSpam;
 import com.rmjtromp.pixelstats.core.utils.ChatColor;
 import com.rmjtromp.pixelstats.core.utils.ComponentUtils;
-import com.rmjtromp.pixelstats.core.utils.ReflectionUtil;
 import com.rmjtromp.pixelstats.core.utils.HypixelProfile;
+import com.rmjtromp.pixelstats.core.utils.ReflectionUtil;
 import com.rmjtromp.pixelstats.core.utils.events.EventHandler;
 import com.rmjtromp.pixelstats.core.utils.events.HandlerList;
 import com.rmjtromp.pixelstats.core.utils.events.Listener;
 
+import net.hypixel.api.util.GameType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ChatLine;
 import net.minecraft.client.gui.GuiChat;
@@ -39,7 +40,7 @@ import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.ChatStyle;
 import net.minecraft.util.IChatComponent;
 
-public class BedWars implements IGame, Listener {
+public class BedWars extends AbstractGame implements Listener {
 
 	private static GuiPlayerTabOverlay OVERLAY_DEFAULT = null;
 	private static BedwarsOverlay OVERLAY_BEDWARS = null;
@@ -47,6 +48,7 @@ public class BedWars implements IGame, Listener {
 	private final Field chatLinesField, lineStringField, scrollPositionField, overlayPlayerListField, isScrolledField, field_146253_i;
 	private final Method setChatLineMethod, setTextMethod;
 	public BedWars() throws NoSuchFieldException, NoSuchMethodException {
+		super(GameType.BEDWARS);
 		overlayPlayerListField = ReflectionUtil.findField(GuiIngame.class, "field_175196_v", "overlayPlayerList");
 		scrollPositionField = ReflectionUtil.findField(GuiNewChat.class, "field_146250_j", "scrollPos");
 		isScrolledField = ReflectionUtil.findField(GuiNewChat.class, "field_146251_k", "isScrolled");
@@ -61,31 +63,31 @@ public class BedWars implements IGame, Listener {
 	public void initialize() {
 		EventsManager.registerEvents(this);
 		
-//		if(OVERLAY_DEFAULT == null) OVERLAY_DEFAULT = Minecraft.getMinecraft().ingameGUI.getTabList();
-//		if(OVERLAY_BEDWARS == null) {
-//			try {
-//				OVERLAY_BEDWARS = new BedwarsOverlay(Minecraft.getMinecraft());
-//			} catch (NoSuchFieldException e) {
-//				e.printStackTrace();
-//			}
-//		}
-//		if(OVERLAY_BEDWARS != null) {
-//			OVERLAY_BEDWARS.initialize(OVERLAY_DEFAULT);
-//			setTablistOverlay(OVERLAY_BEDWARS);
-//		}
+		if(OVERLAY_DEFAULT == null) OVERLAY_DEFAULT = Minecraft.getMinecraft().ingameGUI.getTabList();
+		if(OVERLAY_BEDWARS == null) {
+			try {
+				OVERLAY_BEDWARS = new BedwarsOverlay(Minecraft.getMinecraft());
+			} catch (NoSuchFieldException | NoSuchMethodException e) {
+				e.printStackTrace();
+			}
+		}
+		if(OVERLAY_BEDWARS != null) {
+			OVERLAY_BEDWARS.initialize(OVERLAY_DEFAULT);
+			setTablistOverlay(OVERLAY_BEDWARS);
+		}
 	}
 
 	@Override
 	public void uninitialize() {
 		HandlerList.unregisterAll(this);
-//		if(OVERLAY_DEFAULT != null) {
-//			try {
-//				if(OVERLAY_BEDWARS != null) OVERLAY_BEDWARS.uninitialize(OVERLAY_DEFAULT);
-//			} catch (IllegalAccessException e) {
-//				e.printStackTrace();
-//			}
-//			setTablistOverlay(OVERLAY_DEFAULT);
-//		}
+		if(OVERLAY_DEFAULT != null) {
+			try {
+				if(OVERLAY_BEDWARS != null) OVERLAY_BEDWARS.uninitialize(OVERLAY_DEFAULT);
+			} catch (IllegalAccessException e) {
+				e.printStackTrace();
+			}
+			setTablistOverlay(OVERLAY_DEFAULT);
+		}
 	}
 	
 	@EventHandler
@@ -134,10 +136,10 @@ public class BedWars implements IGame, Listener {
 		final String strippedMessage = ChatColor.stripcolor(e.getMessage().getUnformattedText());
 		final IChatComponent component = e.getMessage();
 		final String message = component.getFormattedText();
-		final GAMESTATUS status = Hypixel.getInstance().getStatus();
+		final GameActivity status = Hypixel.getInstance().getActivity();
 		
 		if(status != null) {
-			if(status.equals(GAMESTATUS.LOBBY)) {
+			if(status.equals(GameActivity.LOBBY)) {
 				Matcher matcher = LOBBY_CHAT_PATTERN.matcher(strippedMessage);
 				if(matcher.matches()) {
 					final String username = matcher.group(2);
@@ -159,10 +161,10 @@ public class BedWars implements IGame, Listener {
 					String index = profile.getBedwars() == null ? ChatColor.DARK_RED + '\u2589' : profile.getBedwars().getIndexColor();
 					
 					IChatComponent left1 = new ChatComponentText(String.format("%s %s", index, msg[0])).setChatStyle(getStyle(profile, profile.hasDisplayName() ? profile.getDisplayName() : displayName));
-					IChatComponent right1 = new ChatComponentText(AntiSpam.replaceRepeatingCharacters(msg[1]));
+					IChatComponent right1 = new ChatComponentText(Minecraft.getMinecraft().thePlayer.getName().equals(username) ? msg[1] : AntiSpam.replaceRepeatingCharacters(msg[1]));
 					e.setMessage(ComponentUtils.join("", left1, right1));
 				}
-			} else if(status.equals(GAMESTATUS.IN_GAME)) {
+			} else if(status.equals(GameActivity.IN_GAME)) {
 				Matcher m1 = IN_GAME_CHAT_PATTERN.matcher(strippedMessage);
 				Matcher m2 = AWAITING_GAME_CHAT_PATTERN.matcher(strippedMessage);
 				Matcher m3 = PLAYER_STREAM_PATTERN.matcher(strippedMessage);

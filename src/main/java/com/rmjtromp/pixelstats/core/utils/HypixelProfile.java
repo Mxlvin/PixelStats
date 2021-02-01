@@ -16,6 +16,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.authlib.GameProfile;
 import com.rmjtromp.pixelstats.core.Hypixel;
+import com.rmjtromp.pixelstats.core.utils.hypixel.DebugUtil;
+import com.rmjtromp.pixelstats.core.utils.hypixel.KeyManager;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityOtherPlayerMP;
@@ -100,7 +102,7 @@ public final class HypixelProfile extends AbstractPlayer implements Comparable<H
 		if(!state.equals(State.LOADING) && !isNick()) {
 			if(Hypixel.getInstance().getAPI() != null) {
 				state = State.LOADING;
-				Hypixel.debug("&eRequesting "+getName()+"'s profile.");
+				DebugUtil.debug("&eRequesting "+getName()+"'s profile.");
 				Hypixel.getInstance().getAPI().getPlayerByUuid(getUniqueId()).whenCompleteAsync((player, e) -> {
 					state = State.LOADED;
 					if(e != null) e.printStackTrace();
@@ -157,7 +159,7 @@ public final class HypixelProfile extends AbstractPlayer implements Comparable<H
 						action.accept(this);
 					}
 				});
-			} else Hypixel.getInstance().requestNewKey(() -> updatePlayerAsync(action));
+			} else KeyManager.requestNewKey(() -> updatePlayerAsync(action));
 		}
 	}
 	

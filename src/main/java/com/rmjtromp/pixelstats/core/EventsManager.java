@@ -16,28 +16,31 @@ import net.minecraftforge.common.MinecraftForge;
 public final class EventsManager {
 
 	private static EventsManager manager = null;
-	private static final List<Listener> queue = new ArrayList<Listener>();
+	private static final List<Listener> queue = new ArrayList<>();
 
 	private EventsManager() {}
 	
 	public static void init() {
 		if(manager == null) manager = new EventsManager();
-		for(Listener listener : queue) _registerEvents(listener);
+		for(Listener listener : queue) registerEvents(listener);
 		if(!queue.isEmpty()) queue.clear();
 		
 		MinecraftForge.EVENT_BUS.register(new ForgeEventListener());
 	}
 	
 	public static void registerEvents(Listener listener) {
-		if(manager != null) _registerEvents(listener);
-		else queue.add(listener);
+		if(manager != null) {
+	    	for (Map.Entry<Class<? extends Event>, Set<RegisteredListener>> entry : RegisteredListener.createRegisteredListeners(listener).entrySet()) {
+	    		Class<? extends Event> clazz = entry.getKey();
+	    		Set<RegisteredListener> value = entry.getValue();
+	    		Class<? extends Event> registrationClass = getRegistrationClass(clazz);
+	    		HandlerList list = getEventListeners(registrationClass);
+	            if(list != null) list.registerAll(value);
+	        }
+		} else queue.add(listener);
 	}
 	
 	public static void callEvent(Event event) {
-		_callEvent(event);
-	}
-	
-    private static void _callEvent(Event event) {
         HandlerList handlers = event.getHandlers();
         RegisteredListener[] listeners = handlers.getRegisteredListeners();
 
@@ -48,22 +51,21 @@ public final class EventsManager {
             	ex.printStackTrace();
             }
         }
-    }
+	}
     
-    private static HandlerList _getEventListeners(Class<? extends Event> type) {
+    private static HandlerList getEventListeners(Class<? extends Event> type) {
         try {
-            Method method = _getRegistrationClass(type).getDeclaredMethod("getHandlerList");
-            method.setAccessible(true);
-            return (HandlerList) method.invoke(null);
-        } catch (Exception e) {
-        	try {
-        		throw new Exception(e.toString());
-        	} catch(Exception e1) {}
-        }
+        	Class<?> clazz = getRegistrationClass(type);
+        	if(clazz != null) {
+                Method method = clazz.getDeclaredMethod("getHandlerList");
+                method.setAccessible(true);
+                return (HandlerList) method.invoke(null);
+        	}
+        } catch (Exception e) {/* ignore */}
         return null;
     }
     
-    private static Class<? extends Event> _getRegistrationClass(Class<? extends Event> clazz) {
+    private static Class<? extends Event> getRegistrationClass(Class<? extends Event> clazz) {
         try {
             clazz.getDeclaredMethod("getHandlerList");
             return clazz;
@@ -71,24 +73,14 @@ public final class EventsManager {
             if (clazz.getSuperclass() != null
                     && !clazz.getSuperclass().equals(Event.class)
                     && Event.class.isAssignableFrom(clazz.getSuperclass())) {
-                return _getRegistrationClass(clazz.getSuperclass().asSubclass(Event.class));
+                return getRegistrationClass(clazz.getSuperclass().asSubclass(Event.class));
             } else {
             	try {
             		throw new Exception("Unable to find handler list for event " + clazz.getName());
-            	} catch(Exception e1) {}
+            	} catch(Exception e1) {/* ignore */}
             }
         }
         return null;
-    }
-    
-    private static void _registerEvents(Listener listener) {
-    	for (Map.Entry<Class<? extends Event>, Set<RegisteredListener>> entry : RegisteredListener.createRegisteredListeners(listener).entrySet()) {
-    		Class<? extends Event> clazz = entry.getKey();
-    		Set<RegisteredListener> value = entry.getValue();
-    		Class<? extends Event> registrationClass = _getRegistrationClass(clazz);
-    		HandlerList list = _getEventListeners(registrationClass);
-            list.registerAll(value);
-        }
     }
 	
 }

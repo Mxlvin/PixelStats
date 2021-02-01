@@ -1,6 +1,5 @@
 package com.rmjtromp.pixelstats.core;
 
-import java.sql.Connection;
 import java.util.UUID;
 
 import com.rmjtromp.pixelstats.PixelStats;
@@ -8,26 +7,35 @@ import com.rmjtromp.pixelstats.core.events.ServerJoinEvent;
 import com.rmjtromp.pixelstats.core.events.ServerQuitEvent;
 import com.rmjtromp.pixelstats.core.utils.events.EventHandler;
 import com.rmjtromp.pixelstats.core.utils.events.Listener;
+import com.rmjtromp.pixelstats.core.utils.hypixel.DebugUtil;
 
 public final class Core implements Listener {
 	
 	private static Core core = null;
-	private static Connection conn = null;
 	
 	private Core() {
 		EventsManager.init();
 		KeybindManager.init();
+		DebugUtil.init();
 
 		EventsManager.registerEvents(new Listener() {
+			
+			private boolean isOnHypixel = false;
 	    	
 	        @EventHandler
 	        public void onServerJoin(ServerJoinEvent e) {
-	        	if(!e.isLocal() && e.getServerData().serverIP.toLowerCase().contains("hypixel.net")) Hypixel.initialize();
+	        	if(!e.isLocal() && e.getServerData().serverIP.toLowerCase().contains("hypixel.net")) {
+	        		Hypixel.initialize();
+	        		isOnHypixel = true;
+	        	}
 	        }
 	        
 	        @EventHandler
 	        public void onServerQuit(ServerQuitEvent e) {
-	        	if(Hypixel.isOnHypixel()) Hypixel.uninitialize();
+	        	if(isOnHypixel) {
+	        		Hypixel.uninitialize();
+	        		isOnHypixel = false;
+	        	}
 	        }
 	        
 	    });
@@ -38,10 +46,6 @@ public final class Core implements Listener {
 		if(core == null) core = new Core();
 		return core;
 	}
-	
-    public static Connection getConnection() {
-    	return conn;
-    }
     
 	public static UUID stringToUUID(String string) {
 		if(string.matches("^([a-f0-9]{8}(?:-?[a-f0-9]{4}){4}[a-f0-9]{8})$")) {
@@ -62,16 +66,5 @@ public final class Core implements Listener {
 		}
 		return null;
 	}
-    
-//    private void initializeConnection() {
-//    	try {
-//    		Class.forName("org.sqlite.JDBC");
-//    		File databaseFile = new File(BWStats.getModDir() + File.separator + "bwstats.db");
-//    		if(!databaseFile.exists()) databaseFile.createNewFile();
-//	        conn = DriverManager.getConnection("jdbc:sqlite:"+databaseFile.getAbsolutePath());
-//    	} catch(Exception e) {
-//    		e.printStackTrace();
-//    	}
-//    }
 	
 }

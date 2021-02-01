@@ -12,7 +12,7 @@ import java.util.stream.Collectors;
 import com.google.common.collect.Ordering;
 import com.mojang.authlib.GameProfile;
 import com.rmjtromp.pixelstats.core.Hypixel;
-import com.rmjtromp.pixelstats.core.Hypixel.GAMESTATUS;
+import com.rmjtromp.pixelstats.core.Hypixel.GameActivity;
 import com.rmjtromp.pixelstats.core.utils.ChatColor;
 import com.rmjtromp.pixelstats.core.utils.ReflectionUtil;
 import com.rmjtromp.pixelstats.core.utils.HypixelProfile;
@@ -124,7 +124,7 @@ public class BedwarsOverlay extends GuiPlayerTabOverlay {
 		int i = 0;
 		int j = 0;
 		int padding = 0;
-		if(!Hypixel.getInstance().getStatus().equals(GAMESTATUS.IN_GAME)) {
+		if(!Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME)) {
 			i += entries.getEntriesWidth()[0];
 		} else {
 			padding = mc.fontRendererObj.FONT_HEIGHT;
@@ -234,7 +234,7 @@ public class BedwarsOverlay extends GuiPlayerTabOverlay {
                 }
 
                 float x = (float)j2;
-                if(!Hypixel.getInstance().getStatus().equals(GAMESTATUS.IN_GAME)) {
+                if(!Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME)) {
                     this.mc.fontRendererObj.drawStringWithShadow(entry.getEntries()[0], x, (float)k2, opacity);
                 } else {
                     for(int iz = 0; iz < entry.getEntries().length; iz++) {
@@ -314,10 +314,10 @@ public class BedwarsOverlay extends GuiPlayerTabOverlay {
 			
 			String color = npi.getPlayerTeam() != null && npi.getPlayerTeam().getColorPrefix() != null ? npi.getPlayerTeam().getColorPrefix() : "";
 			entries[0] = hypixelProfile.getBedwars() != null ? String.format("%s %s %s", hypixelProfile.getBedwars().getIndexColor(), hypixelProfile.getBedwars().getLevelString(), color+hypixelProfile.getName()) : String.format("%s %s %s", ChatColor.DARK_RED + '\u2589', "[~0"+'\u272B'+"]", color+playerInfo.getGameProfile().getName());
-			entries[1] = Hypixel.getInstance().getStatus().equals(GAMESTATUS.IN_GAME) && hypixelProfile.getBedwars() != null ? String.join(ChatColor.WHITE + "+", hypixelProfile.getBedwars().getTags()) : "";
-			entries[2] = Hypixel.getInstance().getStatus().equals(GAMESTATUS.IN_GAME) && hypixelProfile.getBedwars() != null ? Double.toString(hypixelProfile.getBedwars().getFKDR()) : "?";
-			entries[3] = Hypixel.getInstance().getStatus().equals(GAMESTATUS.IN_GAME) && hypixelProfile.getBedwars() != null ? Integer.toString(hypixelProfile.getBedwars().getWinRate())+"%" : "?";
-			entries[4] = Hypixel.getInstance().getStatus().equals(GAMESTATUS.IN_GAME) && hypixelProfile.getBedwars() != null ? Double.toString(hypixelProfile.getBedwars().getBBLR()) : "?";
+			entries[1] = Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME) && hypixelProfile.getBedwars() != null ? String.join(ChatColor.WHITE + "+", hypixelProfile.getBedwars().getTags()) : "";
+			entries[2] = Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME) && hypixelProfile.getBedwars() != null ? Double.toString(hypixelProfile.getBedwars().getFKDR()) : "?";
+			entries[3] = Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME) && hypixelProfile.getBedwars() != null ? Integer.toString(hypixelProfile.getBedwars().getWinRate())+"%" : "?";
+			entries[4] = Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME) && hypixelProfile.getBedwars() != null ? Double.toString(hypixelProfile.getBedwars().getBBLR()) : "?";
 		}
 		
 		private ResourceLocation getLocationSkin() {
