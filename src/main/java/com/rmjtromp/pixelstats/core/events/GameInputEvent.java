@@ -3,7 +3,7 @@ package com.rmjtromp.pixelstats.core.events;
 import com.rmjtromp.pixelstats.core.utils.events.Event;
 import com.rmjtromp.pixelstats.core.utils.events.HandlerList;
 
-public final class RenderTickEvent extends Event {
+public final class GameInputEvent extends Event {
 
 	private static HandlerList HANDLER_LIST = new HandlerList();
 

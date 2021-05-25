@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.rmjtromp.pixelstats.core.utils.Console;
 import com.rmjtromp.pixelstats.core.utils.events.Event;
 import com.rmjtromp.pixelstats.core.utils.events.HandlerList;
 import com.rmjtromp.pixelstats.core.utils.events.Listener;
@@ -18,7 +19,9 @@ public final class EventsManager {
 	private static EventsManager manager = null;
 	private static final List<Listener> queue = new ArrayList<>();
 
-	private EventsManager() {}
+	private EventsManager() {
+		Console.log("Initializing EventsManager");
+	}
 	
 	public static void init() {
 		if(manager == null) manager = new EventsManager();

@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import com.google.common.collect.Ordering;
@@ -15,7 +16,10 @@ import com.rmjtromp.pixelstats.core.Hypixel;
 import com.rmjtromp.pixelstats.core.Hypixel.GameActivity;
 import com.rmjtromp.pixelstats.core.utils.ChatColor;
 import com.rmjtromp.pixelstats.core.utils.ReflectionUtil;
-import com.rmjtromp.pixelstats.core.utils.HypixelProfile;
+import com.rmjtromp.pixelstats.core.utils.TabColumn;
+import com.rmjtromp.pixelstats.core.utils.hypixel.profile.HypixelProfile;
+import com.rmjtromp.pixelstats.core.utils.hypixel.profile.bedwars.BedwarsStats;
+import com.rmjtromp.pixelstats.core.utils.hypixel.profile.bedwars.Tag;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
@@ -89,7 +93,8 @@ public class BedwarsOverlay extends GuiPlayerTabOverlay {
 			List<NetworkPlayerInfo> list = getComparatorOrdering().<NetworkPlayerInfo>sortedCopy(nethandlerplayclient.getPlayerInfoMap());
 	        if(list != null) {
 	            list = list.stream().filter(np -> !ChatColor.stripcolor(super.getPlayerName(np)).startsWith("[NPC]")).collect(Collectors.toList());
-	    		list.forEach(np -> entries.add(new TablistEntry(np)));
+	            list = list.stream().filter(np -> np.getPlayerTeam() == null || !np.getPlayerTeam().getTeamName().equalsIgnoreCase("a999-76d80d5f")).collect(Collectors.toList());
+	    		list.stream().map(TablistEntry::new).forEach(entries::add);
 	        }
 		} catch (IllegalAccessException e) {
 			e.printStackTrace();
@@ -102,19 +107,18 @@ public class BedwarsOverlay extends GuiPlayerTabOverlay {
 		TablistEntryArray entries = getTablistEntries();
 		if(entries.isEmpty()) { return; }
 		
-		// sort entries from bad to good
 		try {
 	        entries.sort((np1, np2) -> {
 	    		// if their bw is null, means they're likely a nicked player therefore needs to be listed higher
-	    		double pp1 = np1.getHypixelProfile().getBedwars() == null ? Double.MAX_VALUE : np1.getHypixelProfile().getBedwars().getIndex();
-	    		double pp2 = np2.getHypixelProfile().getBedwars() == null ? Double.MAX_VALUE : np2.getHypixelProfile().getBedwars().getIndex();
+	    		double pp1 = np1.getHypixelProfile().isNick() ? Double.MAX_VALUE : np1.getHypixelProfile().getBedwars().getIndex().getValue();
+	    		double pp2 = np2.getHypixelProfile().isNick() ? Double.MAX_VALUE : np2.getHypixelProfile().getBedwars().getIndex().getValue();
 	    		return (int)(pp1 - pp2);
 	        });
 		} catch(Exception e) {
 			e.printStackTrace();
 		}
         
-        // if list is bigger than 80 remove the least threatening players from the list
+        // if list is bigger than 40 remove the least threatening players from the list
         if(entries.size() > 40) {
             Collections.reverse(entries);
             for(int i = 40; i < entries.size(); i++) entries.remove(i);
@@ -123,15 +127,11 @@ public class BedwarsOverlay extends GuiPlayerTabOverlay {
 
 		int i = 0;
 		int j = 0;
-		int padding = 0;
-		if(!Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME)) {
-			i += entries.getEntriesWidth()[0];
-		} else {
-			padding = mc.fontRendererObj.FONT_HEIGHT;
-			for(int w : entries.getEntriesWidth()) i += w;
-			i += (entries.getEntriesWidth().length - 1) * entries.spacer;
-			if(!entries.hasTags) i -= entries.spacer;
-		}
+		int padding = !Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME) ? 0 : mc.fontRendererObj.FONT_HEIGHT;
+		
+		TabColumn[] columns = !Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME) ? new TabColumn[]{entries.getColumns()[0]} : Arrays.stream(entries.getColumns()).filter(TabColumn::shouldShowColumn).collect(Collectors.toList()).toArray(new TabColumn[0]); 
+		for(TabColumn c : entries.getColumns()) i += c.getWidestValueWidth();
+		i += (columns.length - 1) * entries.spacer;
 		
 		
 		for(TablistEntry entry : entries) {
@@ -192,13 +192,27 @@ public class BedwarsOverlay extends GuiPlayerTabOverlay {
 
         drawRect(width / 2 - l1 / 2 - 1, k1 - 1, width / 2 + l1 / 2 + 1, k1 + i4 * 9, Integer.MIN_VALUE);
 
+        int cC = ((entries.size() - 1) / i4)+1;
+        for(int c = 0; c < cC; c++) {
+            int y = k1 - this.mc.fontRendererObj.FONT_HEIGHT;
+            int x = ((width / 2 - l1 / 2 - 1) + c * ((cC-1) * i1 + (cC-1) * 5)) + 9;
+            
+            // draw labels
+            for(TabColumn column : columns) {
+            	if(column.getDisplayLabel()) {
+            		int lx = column.shouldCenter() ? x + ((column.getWidestValueWidth() / 2) - (column.getLabelWidth() / 2)) : x;
+            		this.mc.fontRendererObj.drawStringWithShadow(column.getLabel(), lx, y, -1);
+            	}
+                x += column.getWidestValueWidth() + entries.spacer;
+            }
+        }
+        
         for (int k4 = 0; k4 < entries.size(); ++k4) {
             int l4 = k4 / i4;
             int i5 = k4 % i4;
             int j2 = j1 + l4 * i1 + l4 * 5;
             int k2 = k1 + i5 * 9;
             drawRect(j2, k2, j2 + i1, k2 + 8, 553648127);
-            GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
             GlStateManager.enableAlpha();
             GlStateManager.enableBlend();
             GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
@@ -206,8 +220,16 @@ public class BedwarsOverlay extends GuiPlayerTabOverlay {
             if (k4 < entries.size()) {
             	TablistEntry entry = entries.get(k4);
                 NetworkPlayerInfo networkplayerinfo1 = entry.getNetworkPlayerInfo();
-                String s1 = entry.getEntries()[0];
+                HypixelProfile player = entry.getHypixelProfile();
                 GameProfile gameprofile = networkplayerinfo1.getGameProfile();
+                UUID uuid = gameprofile.getId();
+                String s1 = columns[0].get(uuid);
+                
+                GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+                if(Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME) && (Hypixel.getPlayer().equals(player) || player.isInParty())) {
+                	GlStateManager.color(1.0F, 1.0F, 1.0F, .5F);
+                }
+                
 
                 if (flag) {
                 	if(entry.getLocationSkin() != null) {
@@ -227,21 +249,18 @@ public class BedwarsOverlay extends GuiPlayerTabOverlay {
                     j2 += 9;
                 }
 
-            	int opacity = -1;
+                // this renders the player at low opacity if they are the client-player AND in-game
+            	int opacity = Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME) && (Hypixel.getPlayer().equals(player) || player.isInParty()) ? -1862270977 : -1;
                 if (networkplayerinfo1.getGameType() == WorldSettings.GameType.SPECTATOR) {
                     s1 = EnumChatFormatting.ITALIC + s1;
                     opacity = -1862270977;
                 }
 
                 float x = (float)j2;
-                if(!Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME)) {
-                    this.mc.fontRendererObj.drawStringWithShadow(entry.getEntries()[0], x, (float)k2, opacity);
-                } else {
-                    for(int iz = 0; iz < entry.getEntries().length; iz++) {
-                    	if(!entries.hasTags && iz == 1) { continue; }
-                        this.mc.fontRendererObj.drawStringWithShadow(entry.getEntries()[iz], x, (float)k2, opacity);
-                        x += entries.getEntriesWidth()[iz] + entries.spacer;
-                    }
+                for(TabColumn column : columns) {
+                	String value = column.get(uuid);
+                	if(value != null) this.mc.fontRendererObj.drawStringWithShadow(value, column.shouldCenter() ? x + (column.getWidestValueWidth() / 2 - mc.fontRendererObj.getStringWidth(value) / 2) : x, (float)k2, opacity);
+                    x += column.getWidestValueWidth() + entries.spacer;
                 }
 
 
@@ -278,26 +297,47 @@ public class BedwarsOverlay extends GuiPlayerTabOverlay {
 
 		private static final long serialVersionUID = -3565302131857843382L;
 
-		private int spacer = 15;
-		private int[] entriesWidth = new int[] {0, 0, 0, 0, 0};
-		private boolean hasTags = false;
+		private int spacer = 10;
+		private TabColumn[] columns = new TabColumn[] {
+				new TabColumn("Player", false, false, false),
+				new TabColumn("Tags"),
+				new TabColumn("FKDR"),
+				new TabColumn("WLR"),
+				new TabColumn("WS"),
+				new TabColumn("BBLR")
+		};
 		
 		private TablistEntryArray() {}
 		
 		@Override
 		public boolean add(TablistEntry e) {
-			entriesWidth[0] = Math.max(mc.fontRendererObj.getStringWidth(e.getEntries()[0]), entriesWidth[0]);
-			entriesWidth[1] = Math.max(mc.fontRendererObj.getStringWidth(e.getEntries()[1]), entriesWidth[1]);
-			entriesWidth[2] = Math.max(mc.fontRendererObj.getStringWidth(e.getEntries()[2]), entriesWidth[2]);
-			entriesWidth[3] = Math.max(mc.fontRendererObj.getStringWidth(e.getEntries()[3]), entriesWidth[3]);
-			entriesWidth[4] = Math.max(mc.fontRendererObj.getStringWidth(e.getEntries()[4]), entriesWidth[4]);
-			
-			hasTags |= !e.getEntries()[1].isEmpty();
+			String color = e.getNetworkPlayerInfo().getPlayerTeam() != null && e.getNetworkPlayerInfo().getPlayerTeam().getColorPrefix() != null ? e.getNetworkPlayerInfo().getPlayerTeam().getColorPrefix() : "";
+			UUID uuid = e.getHypixelProfile().getUniqueId();
+			if(e.getHypixelProfile().isNick()) {
+				columns[0].add(uuid, String.format("%s %s %s", ChatColor.DARK_RED + '\u2589', "[~0"+'\u272B'+"]", color+e.getHypixelProfile().getName()));
+				if(Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME)) {
+					columns[1].add(uuid, Tag.NICK.toString());
+					columns[2].add(uuid, ChatColor.DARK_RED + "?");
+					columns[3].add(uuid, ChatColor.DARK_RED + "?");
+					columns[4].add(uuid, ChatColor.DARK_RED + "?");
+					columns[5].add(uuid, ChatColor.DARK_RED + "?");
+				}
+			} else {
+				BedwarsStats bwstats = e.getHypixelProfile().getBedwars();
+				columns[0].add(uuid, String.format("%s %s %s", bwstats.getIndex(), bwstats.getLevel(), color+e.getHypixelProfile().getName()));
+				if(Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME)) {
+					columns[1].add(uuid, String.join(ChatColor.WHITE + "+", bwstats.getTags().stream().map(Object::toString).collect(Collectors.toList())));
+					columns[2].add(uuid, bwstats.getFKDR());
+					columns[3].add(uuid, bwstats.getWLR());
+					columns[4].add(uuid, bwstats.getWinstreak());
+					columns[5].add(uuid, bwstats.getBBLR());
+				}
+			}
 			return super.add(e);
 		}
 		
-		private int[] getEntriesWidth() {
-			return entriesWidth;
+		public TabColumn[] getColumns() {
+			return columns;
 		}
 		
 	}
@@ -313,11 +353,11 @@ public class BedwarsOverlay extends GuiPlayerTabOverlay {
 			hypixelProfile = HypixelProfile.get(npi.getGameProfile());
 			
 			String color = npi.getPlayerTeam() != null && npi.getPlayerTeam().getColorPrefix() != null ? npi.getPlayerTeam().getColorPrefix() : "";
-			entries[0] = hypixelProfile.getBedwars() != null ? String.format("%s %s %s", hypixelProfile.getBedwars().getIndexColor(), hypixelProfile.getBedwars().getLevelString(), color+hypixelProfile.getName()) : String.format("%s %s %s", ChatColor.DARK_RED + '\u2589', "[~0"+'\u272B'+"]", color+playerInfo.getGameProfile().getName());
-			entries[1] = Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME) && hypixelProfile.getBedwars() != null ? String.join(ChatColor.WHITE + "+", hypixelProfile.getBedwars().getTags()) : "";
-			entries[2] = Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME) && hypixelProfile.getBedwars() != null ? Double.toString(hypixelProfile.getBedwars().getFKDR()) : "?";
-			entries[3] = Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME) && hypixelProfile.getBedwars() != null ? Integer.toString(hypixelProfile.getBedwars().getWinRate())+"%" : "?";
-			entries[4] = Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME) && hypixelProfile.getBedwars() != null ? Double.toString(hypixelProfile.getBedwars().getBBLR()) : "?";
+			entries[0] = hypixelProfile.getBedwars() != null ? String.format("%s %s %s", hypixelProfile.getBedwars().getIndex(), hypixelProfile.getBedwars().getLevel(), color+hypixelProfile.getName()) : String.format("%s %s %s", ChatColor.DARK_RED + '\u2589', "[~0"+'\u272B'+"]", color+playerInfo.getGameProfile().getName());
+			entries[1] = Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME) && hypixelProfile.getBedwars() != null ? String.join(ChatColor.WHITE + "+", hypixelProfile.getBedwars().getTags().stream().map(Object::toString).collect(Collectors.toList())) : "";
+			entries[2] = Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME) && hypixelProfile.getBedwars() != null ? hypixelProfile.getBedwars().getFKDR().toString() : "?";
+			entries[3] = Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME) && hypixelProfile.getBedwars() != null ? hypixelProfile.getBedwars().getWLR().toString() : "?";
+			entries[4] = Hypixel.getInstance().getActivity().equals(GameActivity.IN_GAME) && hypixelProfile.getBedwars() != null ? hypixelProfile.getBedwars().getBBLR().toString() : "?";
 		}
 		
 		private ResourceLocation getLocationSkin() {
@@ -337,10 +377,6 @@ public class BedwarsOverlay extends GuiPlayerTabOverlay {
 		
 		private HypixelProfile getHypixelProfile() {
 			return hypixelProfile;
-		}
-		
-		private String[] getEntries() {
-			return entries;
 		}
 		
 	}

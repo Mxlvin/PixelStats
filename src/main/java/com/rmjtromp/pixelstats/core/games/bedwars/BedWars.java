@@ -1,33 +1,47 @@
 package com.rmjtromp.pixelstats.core.games.bedwars;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.net.HttpURLConnection;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.lwjgl.input.Keyboard;
+
 import com.rmjtromp.pixelstats.core.EventsManager;
 import com.rmjtromp.pixelstats.core.Hypixel;
 import com.rmjtromp.pixelstats.core.Hypixel.GameActivity;
+import com.rmjtromp.pixelstats.core.events.KeyPressEvent;
 import com.rmjtromp.pixelstats.core.events.MessageReceiveEvent;
 import com.rmjtromp.pixelstats.core.events.MouseInputEvent;
 import com.rmjtromp.pixelstats.core.games.AbstractGame;
 import com.rmjtromp.pixelstats.core.games.bedwars.gui.BedwarsOverlay;
+import com.rmjtromp.pixelstats.core.games.bedwars.gui.HypixelProfileGUI;
 import com.rmjtromp.pixelstats.core.utils.AntiSpam;
 import com.rmjtromp.pixelstats.core.utils.ChatColor;
 import com.rmjtromp.pixelstats.core.utils.ComponentUtils;
-import com.rmjtromp.pixelstats.core.utils.HypixelProfile;
+import com.rmjtromp.pixelstats.core.utils.Console;
+import com.rmjtromp.pixelstats.core.utils.HTTPRequest;
+import com.rmjtromp.pixelstats.core.utils.Multithreading;
 import com.rmjtromp.pixelstats.core.utils.ReflectionUtil;
 import com.rmjtromp.pixelstats.core.utils.events.EventHandler;
 import com.rmjtromp.pixelstats.core.utils.events.HandlerList;
 import com.rmjtromp.pixelstats.core.utils.events.Listener;
+import com.rmjtromp.pixelstats.core.utils.hypixel.profile.HypixelProfile;
 
 import net.hypixel.api.util.GameType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ChatLine;
+import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiChat;
 import net.minecraft.client.gui.GuiIngame;
 import net.minecraft.client.gui.GuiNewChat;
@@ -45,6 +59,33 @@ public class BedWars extends AbstractGame implements Listener {
 	private static GuiPlayerTabOverlay OVERLAY_DEFAULT = null;
 	private static BedwarsOverlay OVERLAY_BEDWARS = null;
 	
+	static {
+		Multithreading.runAsync(() -> {
+			try {
+				Console.debug("Fetching bwstats endpoint url...");
+				HttpURLConnection connection = HTTPRequest.get("https://raw.githubusercontent.com/Boom22545/overlay/master/loginurl.txt");
+				if(connection != null && connection.getResponseCode() == 200) {
+					// Get Response
+					InputStream is = connection.getInputStream();
+					BufferedReader rd = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
+					StringBuilder response = new StringBuilder(); // or StringBuffer if Java version 5+
+					String line;
+					while ((line = rd.readLine()) != null) {
+						response.append(line);
+						response.append('\r');
+					}
+					rd.close();
+					
+					bwStatsEndpointUrl = response.toString();
+					Console.info("Endpoint url fetched: ", response.toString());
+				} else Console.error(connection == null ? "Connection is null" : "Server responded with: ", connection.getResponseCode());
+			} catch(IOException e) {
+				Console.error("Error fetching bwstats endpoint url: ", e);
+				e.printStackTrace();
+			}
+		});
+	}
+	
 	private final Field chatLinesField, lineStringField, scrollPositionField, overlayPlayerListField, isScrolledField, field_146253_i;
 	private final Method setChatLineMethod, setTextMethod;
 	public BedWars() throws NoSuchFieldException, NoSuchMethodException {
@@ -61,6 +102,7 @@ public class BedWars extends AbstractGame implements Listener {
 	
 	@Override
 	public void initialize() {
+		Console.log("Initializing Bedwars");
 		EventsManager.registerEvents(this);
 		
 		if(OVERLAY_DEFAULT == null) OVERLAY_DEFAULT = Minecraft.getMinecraft().ingameGUI.getTabList();
@@ -79,6 +121,7 @@ public class BedWars extends AbstractGame implements Listener {
 
 	@Override
 	public void uninitialize() {
+		Console.log("Uninitializing Bedwars");
 		HandlerList.unregisterAll(this);
 		if(OVERLAY_DEFAULT != null) {
 			try {
@@ -105,11 +148,15 @@ public class BedWars extends AbstractGame implements Listener {
 	                	if(clickevent.getValue().matches("^pixelstats:\\w{1,16}$")) {
 	                		String username = clickevent.getValue().split(":", 2)[1];
 	                		if(e.getButton() == 0) {
-								try {
-			                		setTextMethod.invoke(chat, "/p invite "+username, true);
-								} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e1) {
-									e1.printStackTrace();
-								}
+	                			if(GuiScreen.isShiftKeyDown()) {
+	                				Minecraft.getMinecraft().displayGuiScreen(new HypixelProfileGUI(HypixelProfile.get(username)));
+	                			} else {
+									try {
+				                		setTextMethod.invoke(chat, "/p invite "+username, true);
+									} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e1) {
+										e1.printStackTrace();
+									}
+	                			}
 		                	} else if(e.getButton() == 1) {
 		                		// view profile
 								HypixelProfile profile = HypixelProfile.get(username);
@@ -130,9 +177,36 @@ public class BedWars extends AbstractGame implements Listener {
 	private static final Pattern IN_GAME_CHAT_PATTERN = Pattern.compile("^\\[(.*?)\\] \\[.*?\\] ((?:\\[(.*?)\\] )?(\\w{1,16})): (.*?)$");
 	private static final Pattern AWAITING_GAME_CHAT_PATTERN = Pattern.compile("^((?:\\[(.+?)\\] )?(\\w{1,16})): (.*?)$");
 	private static final Pattern PLAYER_STREAM_PATTERN = Pattern.compile("^(\\w{1,16}) (?:has (?:joined \\(\\d+\\/\\d+\\)|quit)!|reconnected|disconnected)$", Pattern.CASE_INSENSITIVE);
+	private static final Pattern WEIRD_SYMBOL_PATTERN = Pattern.compile("[^\\w\\s!@#\\$%\\^&\\*\\(\\)\\{\\}\\[\\]\\.'\";:<,>?\\/\\\\+_=-`~]", Pattern.UNICODE_CASE);
+	private static final Pattern DISCORD_INVITE_PATTERN = Pattern.compile("discord\\.gg\\/\\w+", Pattern.CASE_INSENSITIVE);
+	
+	private static final List<Long> responseTime = new ArrayList<>();
+	private static long lastUpdate = 0L;
+	private static long averageResponseTime = 0;
+	
+	public static long getAverageResponseTime() {
+		if(System.currentTimeMillis() - lastUpdate > 1000) {
+			lastUpdate = System.currentTimeMillis();
+			if(responseTime.isEmpty()) averageResponseTime = 0;
+			else {
+				long a = 0L;
+				for(long r : responseTime) a+=r;
+				averageResponseTime = a / responseTime.size();
+			}
+		}
+		return averageResponseTime;
+	}
+	
+	@EventHandler
+	public void onKeyPress(KeyPressEvent e) {
+		if(Keyboard.isKeyDown(Keyboard.KEY_DELETE) && e.isCtrlDown()) {
+			responseTime.clear();
+		}
+	}
 	
 	@EventHandler
 	public void onMessageReceive(MessageReceiveEvent e) {
+		long start = System.currentTimeMillis();
 		final String strippedMessage = ChatColor.stripcolor(e.getMessage().getUnformattedText());
 		final IChatComponent component = e.getMessage();
 		final String message = component.getFormattedText();
@@ -140,29 +214,39 @@ public class BedWars extends AbstractGame implements Listener {
 		
 		if(status != null) {
 			if(status.equals(GameActivity.LOBBY)) {
-				Matcher matcher = LOBBY_CHAT_PATTERN.matcher(strippedMessage);
-				if(matcher.matches()) {
-					final String username = matcher.group(2);
-					final String[] msg = message.split(MESSAGE_SEPARATOR_PATTERN, 2);
-					final String displayName = msg[0].split(" ", 2)[1];
-					
-					HypixelProfile profile = HypixelProfile.get(username, hypixelProfile -> {
-						String index = hypixelProfile.getBedwars() == null ? ChatColor.DARK_RED + '\u2589' : hypixelProfile.getBedwars().getIndexColor();
+				if(strippedMessage.length() > 1 && strippedMessage.charAt(0) == '[' && Character.isDigit(strippedMessage.charAt(1))) {
+					Matcher matcher = LOBBY_CHAT_PATTERN.matcher(strippedMessage);
+					if(matcher.matches()) {
+						final String username = matcher.group(2);
+						final String[] msg = message.split(MESSAGE_SEPARATOR_PATTERN, 2);
+						final String displayName = msg[0].split(" ", 2)[1];
 						
-						IChatComponent left1 = new ChatComponentText(String.format("%s %s", index, msg[0])).setChatStyle(getStyle(hypixelProfile, hypixelProfile.hasDisplayName() ? hypixelProfile.getDisplayName() : displayName));
-						IChatComponent right1 = new ChatComponentText(AntiSpam.replaceRepeatingCharacters(msg[1]));
-						try {
-							editChatLine(e.getMessage(), ComponentUtils.join("", left1, right1));
-						} catch (IllegalAccessException | InvocationTargetException e1) {
-							e1.printStackTrace();
+						final String strippedMsg = WEIRD_SYMBOL_PATTERN.matcher(ChatColor.stripcolor(msg[1])).replaceAll("");
+						if(strippedMsg.toLowerCase().contains("discord") && DISCORD_INVITE_PATTERN.matcher(strippedMsg).find()) {
+							e.setCancelled(true);
+							return;
 						}
-					});
+						
+						
+						HypixelProfile profile = HypixelProfile.get(username, hypixelProfile -> {
+							String index = hypixelProfile.getBedwars() == null ? ChatColor.DARK_RED + '\u2589' : hypixelProfile.getBedwars().getIndex().toString();
+							
+							IChatComponent left1 = new ChatComponentText(String.format("%s %s", index, msg[0])).setChatStyle(getStyle(hypixelProfile, hypixelProfile.hasDisplayName() ? hypixelProfile.getDisplayName() : displayName));
+							IChatComponent right1 = new ChatComponentText(AntiSpam.replaceRepeatingCharacters(msg[1]));
+							try {
+								editChatLine(e.getMessage(), ComponentUtils.join("", left1, right1));
+							} catch (IllegalAccessException | InvocationTargetException e1) {
+								e1.printStackTrace();
+							}
+						});
 
-					String index = profile.getBedwars() == null ? ChatColor.DARK_RED + '\u2589' : profile.getBedwars().getIndexColor();
-					
-					IChatComponent left1 = new ChatComponentText(String.format("%s %s", index, msg[0])).setChatStyle(getStyle(profile, profile.hasDisplayName() ? profile.getDisplayName() : displayName));
-					IChatComponent right1 = new ChatComponentText(Minecraft.getMinecraft().thePlayer.getName().equals(username) ? msg[1] : AntiSpam.replaceRepeatingCharacters(msg[1]));
-					e.setMessage(ComponentUtils.join("", left1, right1));
+						String index = profile.getBedwars() == null ? ChatColor.DARK_RED + '\u2589' : profile.getBedwars().getIndex().toString();
+						
+						IChatComponent left1 = new ChatComponentText(String.format("%s %s", index, msg[0])).setChatStyle(getStyle(profile, profile.hasDisplayName() ? profile.getDisplayName() : displayName));
+						IChatComponent right1 = new ChatComponentText(Minecraft.getMinecraft().thePlayer.getName().equals(username) ? msg[1] : AntiSpam.replaceRepeatingCharacters(msg[1]));
+						e.setMessage(ComponentUtils.join("", left1, right1));
+						responseTime.add(System.currentTimeMillis() - start);
+					}
 				}
 			} else if(status.equals(GameActivity.IN_GAME)) {
 				Matcher m1 = IN_GAME_CHAT_PATTERN.matcher(strippedMessage);
@@ -176,8 +260,8 @@ public class BedWars extends AbstractGame implements Listener {
 					final String displayName = msg[0].split(" ", 3)[2];
 					
 					HypixelProfile profile = HypixelProfile.get(username, hypixelProfile -> {
-						String index = hypixelProfile.getBedwars() == null ? ChatColor.DARK_RED + '\u2589' : hypixelProfile.getBedwars().getIndexColor();
-						String level = hypixelProfile.getBedwars() == null ? ChatColor.DARK_RED + "[~0"+'\u272B'+"]" : hypixelProfile.getBedwars().getLevelString();
+						String index = hypixelProfile.getBedwars() == null ? ChatColor.DARK_RED + '\u2589' : hypixelProfile.getBedwars().getIndex().toString();
+						String level = hypixelProfile.getBedwars() == null ? ChatColor.DARK_RED + "[~0"+'\u272B'+"]" : hypixelProfile.getBedwars().getLevel().toString();
 						
 						String leftHandMessage = msg[0];
 						if(type.equals("SHOUT") || type.equals("SPECTATOR")) {
@@ -194,8 +278,8 @@ public class BedWars extends AbstractGame implements Listener {
 						}
 					});
 
-					String index = profile.getBedwars() == null ? ChatColor.DARK_RED + '\u2589' : profile.getBedwars().getIndexColor();
-					String level = profile.getBedwars() == null ? ChatColor.DARK_RED + "[~0"+'\u272B'+"]" : profile.getBedwars().getLevelString();
+					String index = profile.getBedwars() == null ? ChatColor.DARK_RED + '\u2589' : profile.getBedwars().getIndex().toString();
+					String level = profile.getBedwars() == null ? ChatColor.DARK_RED + "[~0"+'\u272B'+"]" : profile.getBedwars().getLevel().toString();
 					String leftHandMessage = msg[0];
 					if(type.equals("SHOUT") || type.equals("SPECTATOR")) {
 						String[] brokenMsg = msg[0].split(" ", 2);
@@ -205,14 +289,15 @@ public class BedWars extends AbstractGame implements Listener {
 					IChatComponent left1 = new ChatComponentText(String.format("%s %s", index, leftHandMessage)).setChatStyle(getStyle(profile, profile.hasDisplayName() ? profile.getDisplayName() : displayName));
 					IChatComponent right1 = new ChatComponentText(msg[1]);
 					e.setMessage(ComponentUtils.join("", left1, right1));
+					responseTime.add(System.currentTimeMillis() - start);
 				} else if(m2.matches()) {
 					final String username = m2.group(3);
 					final String[] msg = message.split(MESSAGE_SEPARATOR_PATTERN, 2);
 					final String displayName = msg[0];
 					
 					HypixelProfile profile = HypixelProfile.get(username, hypixelProfile -> {
-						String index = hypixelProfile.getBedwars() == null ? ChatColor.DARK_RED + '\u2589' : hypixelProfile.getBedwars().getIndexColor();
-						String level = hypixelProfile.getBedwars() == null ? ChatColor.DARK_RED + "[~0"+'\u272B'+"]" : hypixelProfile.getBedwars().getLevelString();
+						String index = hypixelProfile.getBedwars() == null ? ChatColor.DARK_RED + '\u2589' : hypixelProfile.getBedwars().getIndex().toString();
+						String level = hypixelProfile.getBedwars() == null ? ChatColor.DARK_RED + "[~0"+'\u272B'+"]" : hypixelProfile.getBedwars().getLevel().toString();
 						
 						IChatComponent left1 = new ChatComponentText(String.format("%s %s %s", index, level, msg[0])).setChatStyle(getStyle(hypixelProfile, hypixelProfile.hasDisplayName() ? hypixelProfile.getDisplayName() : displayName));
 						IChatComponent right1 = new ChatComponentText(msg[1]);
@@ -223,12 +308,13 @@ public class BedWars extends AbstractGame implements Listener {
 						}
 					});
 
-					String index = profile.getBedwars() == null ? ChatColor.DARK_RED + '\u2589' : profile.getBedwars().getIndexColor();
-					String level = profile.getBedwars() == null ? ChatColor.DARK_RED + "[~0"+'\u272B'+"]" : profile.getBedwars().getLevelString();
+					String index = profile.getBedwars() == null ? ChatColor.DARK_RED + '\u2589' : profile.getBedwars().getIndex().toString();
+					String level = profile.getBedwars() == null ? ChatColor.DARK_RED + "[~0"+'\u272B'+"]" : profile.getBedwars().getLevel().toString();
 					
 					IChatComponent left1 = new ChatComponentText(String.format("%s %s %s", index, level, msg[0])).setChatStyle(getStyle(profile, profile.hasDisplayName() ? profile.getDisplayName() : displayName));
 					IChatComponent right1 = new ChatComponentText(AntiSpam.replaceRepeatingCharacters(msg[1]));
 					e.setMessage(ComponentUtils.join("", left1, right1));
+					responseTime.add(System.currentTimeMillis() - start);
 				} else if(m3.matches()) {
 					final String username = m3.group(1);
 					final String[] msgBreakdown = component.getFormattedText().split(" ", 2);
@@ -237,8 +323,8 @@ public class BedWars extends AbstractGame implements Listener {
 					final String lastColor = ChatColor.getLastColors(displayName);
 					
 					HypixelProfile profile = HypixelProfile.get(username, hypixelProfile -> {
-						String index = hypixelProfile.getBedwars() == null ? ChatColor.DARK_RED + '\u2589' : hypixelProfile.getBedwars().getIndexColor();
-						String level = hypixelProfile.getBedwars() == null ? ChatColor.DARK_RED + "[~0"+'\u272B'+"]" : hypixelProfile.getBedwars().getLevelString();
+						String index = hypixelProfile.getBedwars() == null ? ChatColor.DARK_RED + '\u2589' : hypixelProfile.getBedwars().getIndex().toString();
+						String level = hypixelProfile.getBedwars() == null ? ChatColor.DARK_RED + "[~0"+'\u272B'+"]" : hypixelProfile.getBedwars().getLevel().toString();
 						
 						IChatComponent left1 = new ChatComponentText(String.format("%s %s %s", index, level, displayName)).setChatStyle(getStyle(hypixelProfile, hypixelProfile.hasDisplayName() ? hypixelProfile.getDisplayName() : displayName));
 						IChatComponent right1 = new ChatComponentText(lastColor + " " + rightHandMessage);
@@ -249,21 +335,27 @@ public class BedWars extends AbstractGame implements Listener {
 						}
 					});
 					
-					String index = profile.getBedwars() == null ? ChatColor.DARK_RED + '\u2589' : profile.getBedwars().getIndexColor();
-					String level = profile.getBedwars() == null ? ChatColor.DARK_RED + "[~0"+'\u272B'+"]" : profile.getBedwars().getLevelString();
+					String index = profile.getBedwars() == null ? ChatColor.DARK_RED + '\u2589' : profile.getBedwars().getIndex().toString();
+					String level = profile.getBedwars() == null ? ChatColor.DARK_RED + "[~0"+'\u272B'+"]" : profile.getBedwars().getLevel().toString();
 					
 					IChatComponent left1 = new ChatComponentText(String.format("%s %s %s", index, level, displayName)).setChatStyle(getStyle(profile, profile.hasDisplayName() ? profile.getDisplayName() : displayName));
 					IChatComponent right1 = new ChatComponentText(lastColor + " " + rightHandMessage);
 					e.setMessage(ComponentUtils.join("", left1, right1));
+					responseTime.add(System.currentTimeMillis() - start);
 				}
 			}
 		}
 	}
 	
+	private static String bwStatsEndpointUrl = null;
+	public static String getEndpointUrl() {
+		return bwStatsEndpointUrl;
+	}
+	
 	private ChatStyle getStyle(HypixelProfile profile, String displayName) {
 		IChatComponent hoverMessage;
 		if(profile.getBedwars() == null) hoverMessage = ComponentUtils.join("\n", "&cUnable to find any information for", "&cthis player. They are likely nicked!");
-		else hoverMessage = ComponentUtils.join("\n", displayName, "&7Final K/D Ratio: &e"+profile.getBedwars().getFKDR(), "&7Bed Break/Lose Ratio: &e"+profile.getBedwars().getBBLR(), "&7Win Rate: &e"+profile.getBedwars().getWinRate()+"%", "&7Winstreak: &e"+profile.getBedwars().getWinstreak());
+		else hoverMessage = ComponentUtils.join("\n", displayName, "&7Final K/D Ratio: &7"+profile.getBedwars().getFKDR(), "&7Bed Break/Lose Ratio: &7"+profile.getBedwars().getBBLR(), "&7Win/Lose Ratio: &7"+profile.getBedwars().getWLR(), "&7Winstreak: &7"+profile.getBedwars().getWinstreak());
 
 		ChatStyle style = new ChatStyle();
 		style.setChatHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, hoverMessage));

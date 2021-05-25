@@ -21,7 +21,7 @@ plugins {
     id "net.minecraftforge.gradle.forge" version "2.0.2"
 }
 */
-version = "2.18.2d"
+version = "2.19.1"
 group= "com.rmjtromp.pixelstats" // http://maven.apache.org/guides/mini/guide-naming-conventions.html
 archivesBaseName = "pixelstats"
 
@@ -51,6 +51,8 @@ repositories {
 
 dependencies {
 	compile 'net.hypixel:HypixelAPI:3.0.0'
+	compile 'org.jetbrains:annotations:20.1.0'
+	provided 'io.socket:socket.io-client:2.0.0'
 	// compile 'org.xerial:sqlite-jdbc:3.7.2'
 	// compile 'com.github.ptnplanet:com.github.ptnplanet:1.0.7'
     // you may put jars on which you depend on in ./libs

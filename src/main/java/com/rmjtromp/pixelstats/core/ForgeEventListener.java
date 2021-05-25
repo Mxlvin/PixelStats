@@ -1,23 +1,19 @@
 package com.rmjtromp.pixelstats.core;
 
-import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.concurrent.CompletableFuture;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.lwjgl.input.Mouse;
 
 import com.rmjtromp.pixelstats.core.events.ActionbarReceiveEvent;
 import com.rmjtromp.pixelstats.core.events.ChunkLoadEvent;
 import com.rmjtromp.pixelstats.core.events.ChunkUnloadEvent;
-import com.rmjtromp.pixelstats.core.events.ClientTickEvent;
 import com.rmjtromp.pixelstats.core.events.CommandPreprocessEvent;
 import com.rmjtromp.pixelstats.core.events.EntityJoinWorldEvent;
+import com.rmjtromp.pixelstats.core.events.GameInputEvent;
 import com.rmjtromp.pixelstats.core.events.KeyPressEvent;
 import com.rmjtromp.pixelstats.core.events.MessageReceiveEvent;
 import com.rmjtromp.pixelstats.core.events.MessageSendEvent;
@@ -25,17 +21,18 @@ import com.rmjtromp.pixelstats.core.events.MouseInputEvent;
 import com.rmjtromp.pixelstats.core.events.PacketReadEvent;
 import com.rmjtromp.pixelstats.core.events.PostMessageReceiveEvent;
 import com.rmjtromp.pixelstats.core.events.ReadyEvent;
-import com.rmjtromp.pixelstats.core.events.RenderTickEvent;
 import com.rmjtromp.pixelstats.core.events.ScoreboardUpdateEvent;
 import com.rmjtromp.pixelstats.core.events.ScreenDrawingEvent;
-import com.rmjtromp.pixelstats.core.events.ScreenshotEvent;
 import com.rmjtromp.pixelstats.core.events.ServerJoinEvent;
 import com.rmjtromp.pixelstats.core.events.ServerQuitEvent;
 import com.rmjtromp.pixelstats.core.events.ServerTickEvent;
 import com.rmjtromp.pixelstats.core.events.TablistUpdateEvent;
+import com.rmjtromp.pixelstats.core.events.TickEvent.ClientTick;
+import com.rmjtromp.pixelstats.core.events.TickEvent.RenderTick;
 import com.rmjtromp.pixelstats.core.events.TitleReceiveEvent;
 import com.rmjtromp.pixelstats.core.events.WorldLoadEvent;
 import com.rmjtromp.pixelstats.core.events.WorldUnloadEvent;
+import com.rmjtromp.pixelstats.core.utils.Multithreading;
 import com.rmjtromp.pixelstats.core.utils.events.EventHandler;
 import com.rmjtromp.pixelstats.core.utils.events.Listener;
 
@@ -63,6 +60,7 @@ import net.minecraftforge.event.CommandEvent;
 import net.minecraftforge.event.ServerChatEvent;
 import net.minecraftforge.event.world.ChunkEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.InputEvent;
 import net.minecraftforge.fml.common.gameevent.InputEvent.KeyInputEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.network.FMLNetworkEvent.ClientConnectedToServerEvent;
@@ -83,35 +81,39 @@ public final class ForgeEventListener {
     				EventsManager.callEvent(new PacketReadEvent((Packet<?>) packet));
     				if(packet instanceof S02PacketChat) {
     					S02PacketChat p = (S02PacketChat) packet;
-    					
     					final IChatComponent message = p.getChatComponent();
     					if(!p.isChat()) { // for some reason its opposite
-							MessageReceiveEvent MRE = new MessageReceiveEvent(message);
-        					Listener listener = new Listener() {
-        						
-        						private int tick = 0;
-        						@EventHandler
-        						public void onTick(ClientTickEvent e) {
-        							tick++;
-        							if(tick < 21) {
-            							List<ChatLine> lines = getChatLines();
-            							for(int i = 0; i < (lines.size() > 10 ? 10 : lines.size()); i++) {
-            								ChatLine line = lines.get(0);
-            								if(line.getChatComponent().equals(message)) {
-            									PostMessageReceiveEvent PMRE = new PostMessageReceiveEvent(line);
-            									EventsManager.callEvent(PMRE);
-            									ClientTickEvent.getHandlerList().unregister(this);
-            									break;
-            								}
-            							}
-        							} else ClientTickEvent.getHandlerList().unregister(this);
-        						}
-        						
-        					};
-        					EventsManager.callEvent(MRE);
-        					if(MRE.isCancelled()) return;
-        					packet = new S02PacketChat(MRE.getMessage(), p.getType());
-        					EventsManager.registerEvents(listener);
+    						Multithreading.runAsync(() -> {
+    							MessageReceiveEvent MRE = new MessageReceiveEvent(message);
+    							
+            					Listener listener = new Listener() {
+            						
+            						private int tick = 0;
+            						@EventHandler
+            						public void onTick(ClientTick e) {
+            							tick++;
+            							if(tick < 21) {
+                							List<ChatLine> lines = getChatLines();
+                							for(int i = 0; i < (lines.size() > 10 ? 10 : lines.size()); i++) {
+                								ChatLine line = lines.get(0);
+                								if(line.getChatComponent().equals(message)) {
+                									PostMessageReceiveEvent PMRE = new PostMessageReceiveEvent(line);
+                									EventsManager.callEvent(PMRE);
+                									ClientTick.getHandlerList().unregister(this);
+                									break;
+                								}
+                							}
+            							} else ClientTick.getHandlerList().unregister(this);
+            						}
+            						
+            					};
+            					
+            					EventsManager.callEvent(MRE);
+            					if(MRE.isCancelled()) return;
+            					Minecraft.getMinecraft().getNetHandler().handleChat(new S02PacketChat(MRE.getMessage(), p.getType()));
+            					EventsManager.registerEvents(listener);
+    						});
+        					return;
     					} else {
     						ActionbarReceiveEvent ARE = new ActionbarReceiveEvent(message);
 							EventsManager.callEvent(ARE);
@@ -168,6 +170,13 @@ public final class ForgeEventListener {
     	
     }
     
+//    @SubscribeEvent
+//    public void onRender(DrawScreenEvent.Pre e) {
+//    	if(e.gui instanceof GuiMainMenu) {
+//    		Minecraft.getMinecraft().displayGuiScreen(new HypixelProfileGUI(HypixelProfile.get("Mxlvn")));
+//    	}
+//    }
+    
 	private boolean a = false;
 	@SubscribeEvent
 	public void onScreenDrawing(DrawScreenEvent.Post e) {
@@ -180,12 +189,12 @@ public final class ForgeEventListener {
 
 	@SubscribeEvent
 	public void onRenderTick(TickEvent.RenderTickEvent e) {
-		EventsManager.callEvent(new RenderTickEvent());
+		EventsManager.callEvent(new RenderTick());
 	}
 	
 	@SubscribeEvent
 	public void onClientTick(TickEvent.ClientTickEvent e) {
-		EventsManager.callEvent(new ClientTickEvent());
+		EventsManager.callEvent(new ClientTick());
 	}
 	
 	// THIS IS SERVERSIDE ONLY
@@ -199,39 +208,11 @@ public final class ForgeEventListener {
 		KeyPressEvent KPE = new KeyPressEvent();
 		EventsManager.callEvent(KPE);
 		if(KPE.isCancelled()) e.setCanceled(true);
-
-		if(Minecraft.getMinecraft().gameSettings.keyBindScreenshot.isPressed()) {
-			CompletableFuture.runAsync(new Runnable() {
-				
-				@Override
-				public void run() {
-					try {
-						Field field = GuiNewChat.class.getDeclaredField("chatLines");
-						field.setAccessible(true);
-						
-						@SuppressWarnings("unchecked")
-						List<ChatLine> chatLines = (List<ChatLine>) field.get(Minecraft.getMinecraft().ingameGUI.getChatGUI());
-						Pattern pattern = Pattern.compile("^Saved screenshot as (.*?\\.png)$");
-						int max = chatLines.size() < 10 ? chatLines.size() : 10;
-						
-						for(int i = 0; i < max; i++) {
-							ChatLine line = chatLines.get(i);
-							Matcher matcher = pattern.matcher(line.getChatComponent().getUnformattedText());
-							if(matcher.find()) {
-								File ssfile = new File(Minecraft.getMinecraft().mcDataDir + File.separator + "screenshots" + File.separator + matcher.group(1));
-
-								ScreenshotEvent SE = new ScreenshotEvent(ssfile, line);
-								EventsManager.callEvent(SE);
-								break;
-							}
-						}
-					} catch (Exception ex) {
-						ex.printStackTrace();
-					}
-				}
-
-			});
-		}
+	}
+	
+	@SubscribeEvent
+	public void onGameInput(InputEvent e) {
+		EventsManager.callEvent(new GameInputEvent());
 	}
 	
 	@SubscribeEvent
@@ -296,15 +277,15 @@ public final class ForgeEventListener {
 	
 	private long lwl = 0, lwu = 0;
 	@SubscribeEvent
-	public void on(net.minecraftforge.event.world.WorldEvent.Load e) {
-		if(System.currentTimeMillis() - lwl < 1000) return;
+	public void onWorldLoad(net.minecraftforge.event.world.WorldEvent.Load e) {
+		if(System.currentTimeMillis() - lwl < 3000) return;
 		lwl = System.currentTimeMillis();
 		EventsManager.callEvent(new WorldLoadEvent(e.world));
 	}
 
 	@SubscribeEvent
-	public void on(net.minecraftforge.event.world.WorldEvent.Unload e) {
-		if(System.currentTimeMillis() - lwu < 1000) return;
+	public void onWorldUnload(net.minecraftforge.event.world.WorldEvent.Unload e) {
+		if(System.currentTimeMillis() - lwu < 3000) return;
 		lwu = System.currentTimeMillis();
 		EventsManager.callEvent(new WorldUnloadEvent(e.world));
 	}

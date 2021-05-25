@@ -2,21 +2,37 @@ package com.rmjtromp.pixelstats.core;
 
 import java.util.UUID;
 
+import org.lwjgl.input.Keyboard;
+
 import com.rmjtromp.pixelstats.PixelStats;
+import com.rmjtromp.pixelstats.core.events.KeyPressEvent;
+import com.rmjtromp.pixelstats.core.events.ScreenDrawingEvent;
 import com.rmjtromp.pixelstats.core.events.ServerJoinEvent;
 import com.rmjtromp.pixelstats.core.events.ServerQuitEvent;
+import com.rmjtromp.pixelstats.core.gui.SettingsGui;
+import com.rmjtromp.pixelstats.core.gui.Test;
+import com.rmjtromp.pixelstats.core.utils.Console;
 import com.rmjtromp.pixelstats.core.utils.events.EventHandler;
 import com.rmjtromp.pixelstats.core.utils.events.Listener;
 import com.rmjtromp.pixelstats.core.utils.hypixel.DebugUtil;
 
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiMainMenu;
+import net.minecraft.client.settings.KeyBinding;
+
 public final class Core implements Listener {
 	
 	private static Core core = null;
+	public static boolean asd = false;
+	private static final KeyBinding Settings = KeybindManager.registerKeybind("Settings", Keyboard.KEY_ESCAPE, "PixelStats");
+	private final SettingsGui settingsGui = new SettingsGui();
 	
 	private Core() {
+		Console.log("Initializing Core");
 		EventsManager.init();
 		KeybindManager.init();
 		DebugUtil.init();
+//		Test.init();
 
 		EventsManager.registerEvents(new Listener() {
 			
@@ -35,6 +51,20 @@ public final class Core implements Listener {
 	        	if(isOnHypixel) {
 	        		Hypixel.uninitialize();
 	        		isOnHypixel = false;
+	        	}
+	        }
+	        
+	        @EventHandler
+	        public void onKeyPress(KeyPressEvent e) {
+	        	if(Settings.isPressed()) {
+//	        		Minecraft.getMinecraft().displayGuiScreen(settingsGui);
+	        	}
+	        }
+	        
+	        @EventHandler
+	        public void drawScreen(ScreenDrawingEvent e) {
+	        	if(e.getScreen() instanceof GuiMainMenu) {
+	        		Minecraft.getMinecraft().displayGuiScreen(new Test());
 	        	}
 	        }
 	        
